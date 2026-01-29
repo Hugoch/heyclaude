@@ -242,12 +242,12 @@ class TelegramNotifier:
             self._answer_callback(callback_id, f"Error: {e}")
 
     def _answer_callback(self, callback_id: str, text: str):
-        """Answer a callback query with a toast notification."""
+        """Answer a callback query."""
         try:
             url = f"https://api.telegram.org/bot{self.bot_token}/answerCallbackQuery"
             requests.post(
                 url,
-                json={"callback_query_id": callback_id, "text": text, "show_alert": True},
+                json={"callback_query_id": callback_id, "text": text, "show_alert": False},
                 timeout=5,
             )
         except Exception as e:

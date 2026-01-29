@@ -55,6 +55,7 @@ class PreferencesWindowController(NSObject):
     window = objc.ivar()
     config = objc.ivar()
     on_config_changed = objc.ivar()
+    _menu_initialized = objc.ivar()
 
     def initWithConfig_(self, config):
         self = objc.super(PreferencesWindowController, self).init()
@@ -75,15 +76,16 @@ class PreferencesWindowController(NSObject):
         )
 
         self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSMakeRect(0, 0, 500, 400),
+            NSMakeRect(0, 0, 500, 480),
             style,
             NSBackingStoreBuffered,
             False,
         )
         self.window.setTitle_("HeyClaude Preferences")
+        self.window.setReleasedWhenClosed_(False)  # Prevent crash on reopen
         self.window.center()
 
-        tab_view = NSTabView.alloc().initWithFrame_(NSMakeRect(20, 20, 460, 360))
+        tab_view = NSTabView.alloc().initWithFrame_(NSMakeRect(20, 20, 460, 440))
 
         general_tab = self._create_general_tab()
         tab_view.addTabViewItem_(general_tab)
@@ -114,9 +116,9 @@ class PreferencesWindowController(NSObject):
         tab = NSTabViewItem.alloc().initWithIdentifier_("general")
         tab.setLabel_("General")
 
-        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 300))
+        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 400))
 
-        y = 250
+        y = 360
 
         launch_label = self._create_label("Launch at Login:", NSMakeRect(20, y, 150, 20))
         view.addSubview_(launch_label)
@@ -165,9 +167,9 @@ class PreferencesWindowController(NSObject):
         tab = NSTabViewItem.alloc().initWithIdentifier_("macos")
         tab.setLabel_("macOS")
 
-        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 300))
+        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 400))
 
-        y = 250
+        y = 360
 
         enabled_label = self._create_label("Enable Notifications:", NSMakeRect(20, y, 150, 20))
         view.addSubview_(enabled_label)
@@ -181,6 +183,21 @@ class PreferencesWindowController(NSObject):
         self.macos_enabled.setTarget_(self)
         self.macos_enabled.setAction_(objc.selector(self.macosEnabledChanged_, signature=b"v@:@"))
         view.addSubview_(self.macos_enabled)
+
+        y -= 40
+
+        sound_enabled_label = self._create_label("Play Sound:", NSMakeRect(20, y, 150, 20))
+        view.addSubview_(sound_enabled_label)
+
+        self.sound_enabled_checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(180, y, 200, 20))
+        self.sound_enabled_checkbox.setButtonType_(NSSwitchButton)
+        self.sound_enabled_checkbox.setTitle_("")
+        self.sound_enabled_checkbox.setState_(
+            NSOnState if self.config.macos_sound_enabled else NSOffState
+        )
+        self.sound_enabled_checkbox.setTarget_(self)
+        self.sound_enabled_checkbox.setAction_(objc.selector(self.soundEnabledChanged_, signature=b"v@:@"))
+        view.addSubview_(self.sound_enabled_checkbox)
 
         y -= 40
 
@@ -222,9 +239,9 @@ class PreferencesWindowController(NSObject):
         tab = NSTabViewItem.alloc().initWithIdentifier_("telegram")
         tab.setLabel_("Telegram")
 
-        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 300))
+        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 400))
 
-        y = 250
+        y = 360
 
         enabled_label = self._create_label("Enable Telegram:", NSMakeRect(20, y, 150, 20))
         view.addSubview_(enabled_label)
@@ -288,16 +305,42 @@ class PreferencesWindowController(NSObject):
 
         self.lines_slider = NSSlider.alloc().initWithFrame_(NSMakeRect(180, y, 150, 24))
         self.lines_slider.setMinValue_(5)
-        self.lines_slider.setMaxValue_(50)
+        self.lines_slider.setMaxValue_(100)  # 100 = All
         self.lines_slider.setIntValue_(self.config.telegram_context_lines)
         self.lines_slider.setTarget_(self)
         self.lines_slider.setAction_(objc.selector(self.linesChanged_, signature=b"v@:@"))
         view.addSubview_(self.lines_slider)
 
-        self.lines_value = self._create_label(
-            str(self.config.telegram_context_lines), NSMakeRect(340, y, 40, 20)
-        )
+        lines_val = self.config.telegram_context_lines
+        lines_text = "All" if lines_val >= 100 else str(lines_val)
+        self.lines_value = self._create_label(lines_text, NSMakeRect(340, y, 40, 20))
         view.addSubview_(self.lines_value)
+
+        y -= 50
+
+        idle_label = self._create_label("Idle time for Telegram:", NSMakeRect(20, y, 150, 20))
+        view.addSubview_(idle_label)
+
+        # Slider in minutes (0-30)
+        self.idle_time_slider = NSSlider.alloc().initWithFrame_(NSMakeRect(180, y, 150, 24))
+        self.idle_time_slider.setMinValue_(0)
+        self.idle_time_slider.setMaxValue_(30)
+        idle_minutes = self.config.telegram_idle_time_required // 60
+        self.idle_time_slider.setIntValue_(idle_minutes)
+        self.idle_time_slider.setTarget_(self)
+        self.idle_time_slider.setAction_(objc.selector(self.idleTimeChanged_, signature=b"v@:@"))
+        view.addSubview_(self.idle_time_slider)
+
+        idle_text = "Always" if idle_minutes == 0 else f"{idle_minutes} min"
+        self.idle_time_value = self._create_label(idle_text, NSMakeRect(340, y, 50, 20))
+        view.addSubview_(self.idle_time_value)
+
+        y -= 20
+
+        idle_hint = self._create_label("Only send to Telegram if computer is idle (0 = always send)", NSMakeRect(20, y, 400, 16))
+        idle_hint.setTextColor_(NSTextField.alloc().init().textColor().colorWithAlphaComponent_(0.5))
+        idle_hint.setFont_(NSFont.systemFontOfSize_(11))
+        view.addSubview_(idle_hint)
 
         tab.setView_(view)
         return tab
@@ -307,32 +350,57 @@ class PreferencesWindowController(NSObject):
         tab = NSTabViewItem.alloc().initWithIdentifier_("advanced")
         tab.setLabel_("Advanced")
 
-        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 300))
+        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 440, 400))
 
-        y = 250
+        y = 360
 
-        all_notif_label = self._create_label("All Notifications:", NSMakeRect(20, y, 150, 20))
-        view.addSubview_(all_notif_label)
-
-        self.all_notif_checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(180, y, 20, 20))
-        self.all_notif_checkbox.setButtonType_(NSSwitchButton)
-        self.all_notif_checkbox.setTitle_("")
-        self.all_notif_checkbox.setState_(
-            NSOnState if self.config.all_notifications else NSOffState
-        )
-        self.all_notif_checkbox.setTarget_(self)
-        self.all_notif_checkbox.setAction_(objc.selector(self.allNotificationsChanged_, signature=b"v@:@"))
-        view.addSubview_(self.all_notif_checkbox)
-
-        hint_label = self._create_label("Instant, not just idle", NSMakeRect(210, y, 200, 20))
-        hint_label.setTextColor_(NSTextField.alloc().init().textColor().colorWithAlphaComponent_(0.6))
-        view.addSubview_(hint_label)
+        # Notification Types section
+        notif_header = self._create_label("Notification Types:", NSMakeRect(20, y, 200, 20))
+        notif_header.setFont_(NSFont.boldSystemFontOfSize_(13))
+        view.addSubview_(notif_header)
 
         y -= 30
 
+        idle_label = self._create_label("Idle notifications:", NSMakeRect(20, y, 150, 20))
+        view.addSubview_(idle_label)
+
+        self.idle_notif_checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(180, y, 20, 20))
+        self.idle_notif_checkbox.setButtonType_(NSSwitchButton)
+        self.idle_notif_checkbox.setTitle_("")
+        self.idle_notif_checkbox.setState_(
+            NSOnState if self.config.idle_notifications else NSOffState
+        )
+        self.idle_notif_checkbox.setTarget_(self)
+        self.idle_notif_checkbox.setAction_(objc.selector(self.idleNotificationsChanged_, signature=b"v@:@"))
+        view.addSubview_(self.idle_notif_checkbox)
+
+        idle_hint = self._create_label("When Claude waits for input", NSMakeRect(210, y, 200, 20))
+        idle_hint.setTextColor_(NSTextField.alloc().init().textColor().colorWithAlphaComponent_(0.6))
+        view.addSubview_(idle_hint)
+
+        y -= 30
+
+        perm_label = self._create_label("Permission notifications:", NSMakeRect(20, y, 150, 20))
+        view.addSubview_(perm_label)
+
+        self.perm_notif_checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(180, y, 20, 20))
+        self.perm_notif_checkbox.setButtonType_(NSSwitchButton)
+        self.perm_notif_checkbox.setTitle_("")
+        self.perm_notif_checkbox.setState_(
+            NSOnState if self.config.permission_notifications else NSOffState
+        )
+        self.perm_notif_checkbox.setTarget_(self)
+        self.perm_notif_checkbox.setAction_(objc.selector(self.permNotificationsChanged_, signature=b"v@:@"))
+        view.addSubview_(self.perm_notif_checkbox)
+
+        perm_hint = self._create_label("When Claude needs permission", NSMakeRect(210, y, 200, 20))
+        perm_hint.setTextColor_(NSTextField.alloc().init().textColor().colorWithAlphaComponent_(0.6))
+        view.addSubview_(perm_hint)
+
+        y -= 25
+
         reinstall_note = self._create_label("(Reinstall hook after changing)", NSMakeRect(180, y, 250, 16))
         reinstall_note.setTextColor_(NSTextField.alloc().init().textColor().colorWithAlphaComponent_(0.4))
-        from AppKit import NSFont
         reinstall_note.setFont_(NSFont.systemFontOfSize_(11))
         view.addSubview_(reinstall_note)
 
@@ -386,6 +454,11 @@ class PreferencesWindowController(NSObject):
         self._notify_changed()
 
     @objc.typedSelector(b"v@:@")
+    def soundEnabledChanged_(self, sender):
+        self.config.set("notifications.macos.sound_enabled", sender.state() == NSOnState)
+        self._notify_changed()
+
+    @objc.typedSelector(b"v@:@")
     def terminalChanged_(self, sender):
         self.config.set("notifications.macos.terminal_app", sender.titleOfSelectedItem())
         self._notify_changed()
@@ -436,13 +509,28 @@ class PreferencesWindowController(NSObject):
     @objc.typedSelector(b"v@:@")
     def linesChanged_(self, sender):
         value = int(sender.intValue())
-        self.lines_value.setStringValue_(str(value))
+        text = "All" if value >= 100 else str(value)
+        self.lines_value.setStringValue_(text)
         self.config.set("notifications.telegram.context_lines", value)
         self._notify_changed()
 
     @objc.typedSelector(b"v@:@")
-    def allNotificationsChanged_(self, sender):
-        self.config.set("filters.all_notifications", sender.state() == NSOnState)
+    def idleNotificationsChanged_(self, sender):
+        self.config.set("filters.idle_notifications", sender.state() == NSOnState)
+        self._notify_changed()
+
+    @objc.typedSelector(b"v@:@")
+    def permNotificationsChanged_(self, sender):
+        self.config.set("filters.permission_notifications", sender.state() == NSOnState)
+        self._notify_changed()
+
+    @objc.typedSelector(b"v@:@")
+    def idleTimeChanged_(self, sender):
+        minutes = int(sender.intValue())
+        text = "Always" if minutes == 0 else f"{minutes} min"
+        self.idle_time_value.setStringValue_(text)
+        # Store in seconds
+        self.config.set("notifications.telegram.idle_time_required", minutes * 60)
         self._notify_changed()
 
     @objc.typedSelector(b"v@:@")
@@ -466,7 +554,10 @@ class PreferencesWindowController(NSObject):
     def installHook_(self, sender):
         from ..hooks import install_hook
 
-        success, message = install_hook(all_notifications=self.config.all_notifications)
+        success, message = install_hook(
+            idle_notifications=self.config.idle_notifications,
+            permission_notifications=self.config.permission_notifications,
+        )
         if success:
             self._show_alert("Success", message)
             self._update_hook_status()
@@ -494,35 +585,58 @@ class PreferencesWindowController(NSObject):
             NSMenuItem,
         )
 
+        # If window is already visible, just bring to front
+        try:
+            if self.window is not None and self.window.isVisible():
+                from AppKit import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
+                NSApp.activateIgnoringOtherApps_(True)
+                self.window.makeKeyAndOrderFront_(None)
+                self.window.orderFrontRegardless()
+                current_app = NSRunningApplication.currentApplication()
+                current_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+                return
+        except Exception as e:
+            logger.warning(f"Error checking window visibility: {e}")
+
         # Temporarily become a regular app to show the window
         NSApp.setActivationPolicy_(NSApplicationActivationPolicyRegular)
 
-        # Create Edit menu for copy/paste support
-        menubar = NSMenu.alloc().init()
-        app_menu_item = NSMenuItem.alloc().init()
-        menubar.addItem_(app_menu_item)
+        # Only create Edit menu once
+        if not getattr(self, '_menu_initialized', False):
+            menubar = NSMenu.alloc().init()
+            app_menu_item = NSMenuItem.alloc().init()
+            menubar.addItem_(app_menu_item)
 
-        edit_menu_item = NSMenuItem.alloc().init()
-        menubar.addItem_(edit_menu_item)
+            edit_menu_item = NSMenuItem.alloc().init()
+            menubar.addItem_(edit_menu_item)
 
-        edit_menu = NSMenu.alloc().initWithTitle_("Edit")
+            edit_menu = NSMenu.alloc().initWithTitle_("Edit")
 
-        cut_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Cut", "cut:", "x")
-        copy_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Copy", "copy:", "c")
-        paste_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Paste", "paste:", "v")
-        select_all_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Select All", "selectAll:", "a")
+            cut_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Cut", "cut:", "x")
+            copy_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Copy", "copy:", "c")
+            paste_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Paste", "paste:", "v")
+            select_all_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Select All", "selectAll:", "a")
 
-        edit_menu.addItem_(cut_item)
-        edit_menu.addItem_(copy_item)
-        edit_menu.addItem_(paste_item)
-        edit_menu.addItem_(NSMenuItem.separatorItem())
-        edit_menu.addItem_(select_all_item)
+            edit_menu.addItem_(cut_item)
+            edit_menu.addItem_(copy_item)
+            edit_menu.addItem_(paste_item)
+            edit_menu.addItem_(NSMenuItem.separatorItem())
+            edit_menu.addItem_(select_all_item)
 
-        edit_menu_item.setSubmenu_(edit_menu)
-        NSApp.setMainMenu_(menubar)
+            edit_menu_item.setSubmenu_(edit_menu)
+            NSApp.setMainMenu_(menubar)
+            self._menu_initialized = True
+
+        # Activate app and bring window to front
+        from AppKit import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
 
         NSApp.activateIgnoringOtherApps_(True)
-        self.window.makeKeyAndOrderFront_(sender)
+        self.window.makeKeyAndOrderFront_(None)
+        self.window.orderFrontRegardless()
+
+        # Also activate via NSRunningApplication for good measure
+        current_app = NSRunningApplication.currentApplication()
+        current_app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
 
 
 _prefs_controller = None
@@ -531,7 +645,23 @@ _prefs_controller = None
 def show_preferences(config, on_changed=None):
     """Show the preferences window."""
     global _prefs_controller
-    if _prefs_controller is None:
+    try:
+        # Check if existing controller is still valid
+        if _prefs_controller is not None:
+            try:
+                # Try to access window - will fail if deallocated
+                _ = _prefs_controller.window
+            except Exception:
+                _prefs_controller = None
+
+        if _prefs_controller is None:
+            _prefs_controller = PreferencesWindowController.alloc().initWithConfig_(config)
+            _prefs_controller.on_config_changed = on_changed
+        _prefs_controller.showWindow_(None)
+    except Exception as e:
+        logger.error(f"Error showing preferences: {e}")
+        # Reset and try again
+        _prefs_controller = None
         _prefs_controller = PreferencesWindowController.alloc().initWithConfig_(config)
         _prefs_controller.on_config_changed = on_changed
-    _prefs_controller.showWindow_(None)
+        _prefs_controller.showWindow_(None)

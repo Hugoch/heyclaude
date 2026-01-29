@@ -1,9 +1,38 @@
-"""Terminal app detection and activation."""
+"""Terminal app detection and activation, and system utilities."""
 
 import logging
 import subprocess
 
 logger = logging.getLogger(__name__)
+
+
+def get_system_idle_time() -> float:
+    """
+    Get the system idle time in seconds.
+
+    Uses macOS IOKit to get the HID idle time.
+
+    Returns:
+        Idle time in seconds, or 0 if detection fails.
+    """
+    try:
+        result = subprocess.run(
+            ["ioreg", "-c", "IOHIDSystem", "-d", "4"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        for line in result.stdout.split("\n"):
+            if "HIDIdleTime" in line:
+                # Extract the number from the line
+                # Format: "HIDIdleTime" = 1234567890
+                parts = line.split("=")
+                if len(parts) >= 2:
+                    idle_ns = int(parts[1].strip())
+                    return idle_ns / 1_000_000_000  # Convert nanoseconds to seconds
+    except Exception as e:
+        logger.debug(f"Could not get system idle time: {e}")
+    return 0
 
 TERMINAL_APPS = {
     "iTerm": "com.googlecode.iterm2",

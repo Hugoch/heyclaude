@@ -77,12 +77,16 @@ def get_settings_path() -> Path:
     return Path.home() / ".claude" / "settings.json"
 
 
-def install_hook(all_notifications: bool = False) -> tuple[bool, str]:
+def install_hook(
+    idle_notifications: bool = True,
+    permission_notifications: bool = True,
+) -> tuple[bool, str]:
     """
     Install the HeyClaude hooks for Claude Code.
 
     Args:
-        all_notifications: If True, receive all notifications. If False, only idle_prompt.
+        idle_notifications: If True, receive idle_prompt notifications.
+        permission_notifications: If True, receive permission_prompt notifications.
 
     Returns:
         Tuple of (success, message)
@@ -124,41 +128,40 @@ def install_hook(all_notifications: bool = False) -> tuple[bool, str]:
             "command": str(perm_hook_path),
         }
 
-        if all_notifications:
-            # Both idle_prompt and permission_prompt notifications
-            settings["hooks"]["Notification"] = [
-                {
-                    "matcher": "idle_prompt",
-                    "hooks": [hook_entry]
-                },
-                {
-                    "matcher": "permission_prompt",
-                    "hooks": [hook_entry]
-                }
-            ]
-            # Also add PermissionRequest hook for responding to permission requests
+        # Build notification hooks based on settings
+        notification_hooks = []
+        modes = []
+
+        if idle_notifications:
+            notification_hooks.append({
+                "matcher": "idle_prompt",
+                "hooks": [hook_entry]
+            })
+            modes.append("idle")
+
+        if permission_notifications:
+            # Only add PermissionRequest hook (not Notification hook for permission_prompt
+            # to avoid duplicate notifications)
+            modes.append("permission")
             settings["hooks"]["PermissionRequest"] = [
                 {
                     "hooks": [perm_hook_entry]
                 }
             ]
-            mode = "idle + permission prompts (with Telegram actions)"
         else:
-            # Only idle_prompt notifications
-            settings["hooks"]["Notification"] = [
-                {
-                    "matcher": "idle_prompt",
-                    "hooks": [hook_entry]
-                }
-            ]
             # Remove PermissionRequest hook if exists
             settings["hooks"].pop("PermissionRequest", None)
-            mode = "idle_prompt only"
+
+        if notification_hooks:
+            settings["hooks"]["Notification"] = notification_hooks
+        else:
+            settings["hooks"].pop("Notification", None)
 
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         with open(settings_path, "w") as f:
             json.dump(settings, f, indent=2)
 
+        mode = " + ".join(modes) if modes else "none"
         logger.info(f"Hook installed successfully ({mode})")
         return True, f"Hook installed ({mode})"
 

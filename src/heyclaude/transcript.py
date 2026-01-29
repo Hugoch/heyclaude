@@ -75,9 +75,11 @@ def parse_transcript(transcript_path: str, max_lines: int = 20) -> str | None:
     result = last_question or last_assistant_message
 
     if result:
-        lines = result.split("\n")
-        if len(lines) > max_lines:
-            return "\n".join(lines[:max_lines]) + "\n..."
+        # max_lines >= 100 means "All" - no truncation
+        if max_lines < 100:
+            lines = result.split("\n")
+            if len(lines) > max_lines:
+                return "\n".join(lines[:max_lines]) + "\n..."
         return result
 
     return None

@@ -71,6 +71,7 @@ def send_notification(
     message: str,
     subtitle: str | None = None,
     sound: str = "Ping",
+    sound_enabled: bool = True,
     terminal_app: str = "iTerm",
     group: str = "heyclaude",
 ) -> bool:
@@ -107,7 +108,8 @@ def send_notification(
         content.setBody_(message)
         if subtitle:
             content.setSubtitle_(subtitle)
-        content.setSound_(UserNotifications.UNNotificationSound.defaultSound())
+        if sound_enabled:
+            content.setSound_(UserNotifications.UNNotificationSound.defaultSound())
 
         # Create request with identifier (allows replacing)
         request = UserNotifications.UNNotificationRequest.requestWithIdentifier_content_trigger_(
@@ -135,17 +137,17 @@ def send_notification(
 
     except ImportError:
         logger.error("UserNotifications framework not available")
-        return _send_via_osascript(title, message, subtitle, sound)
+        return _send_via_osascript(title, message, subtitle, sound if sound_enabled else None)
     except Exception as e:
         logger.error(f"Failed to send notification: {e}")
-        return _send_via_osascript(title, message, subtitle, sound)
+        return _send_via_osascript(title, message, subtitle, sound if sound_enabled else None)
 
 
 def _send_via_osascript(
     title: str,
     message: str,
     subtitle: str | None,
-    sound: str,
+    sound: str | None,
 ) -> bool:
     """Fallback: Send notification via osascript."""
     import subprocess
@@ -157,7 +159,10 @@ def _send_via_osascript(
     title = title.replace('"', '\\"')
     full_message = full_message.replace('"', '\\"')
 
-    script = f'display notification "{full_message}" with title "{title}" sound name "{sound}"'
+    if sound:
+        script = f'display notification "{full_message}" with title "{title}" sound name "{sound}"'
+    else:
+        script = f'display notification "{full_message}" with title "{title}"'
 
     try:
         result = subprocess.run(

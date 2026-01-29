@@ -11,7 +11,7 @@ from .hooks import install_hook, is_hook_installed
 from .notifier import check_terminal_notifier_installed, send_notification
 from .server import NotificationServer
 from .telegram_bot import TelegramNotifier
-from .terminal import activate_terminal
+from .terminal import activate_terminal, get_system_idle_time
 from .transcript import get_project_name, parse_transcript
 
 logger = logging.getLogger(__name__)
@@ -93,11 +93,13 @@ class HeyClaude(rumps.App):
         """Handle incoming notification from Claude Code."""
         notification_type = data.get("notification_type", "")
 
-        # Check if we should process this notification
-        if not self.config.all_notifications:
-            if notification_type not in self.config.notification_types:
-                logger.debug(f"Ignoring notification type: {notification_type}")
-                return
+        # Check if we should process this notification based on type
+        if notification_type == "idle_prompt" and not self.config.idle_notifications:
+            logger.debug("Ignoring idle_prompt notification (disabled in settings)")
+            return
+        if notification_type == "permission_prompt" and not self.config.permission_notifications:
+            logger.debug("Ignoring permission_prompt notification (disabled in settings)")
+            return
 
         logger.info(f"Processing notification: {notification_type}")
 
@@ -113,28 +115,51 @@ class HeyClaude(rumps.App):
                 transcript_path, max_lines=self.config.telegram_context_lines
             )
 
+        # Always send macOS notification
         if self.config.macos_enabled:
-            self._send_macos_notification(project, message, cwd)
+            self._send_macos_notification(project, message, cwd, context)
 
+        # Only send Telegram notification if idle time requirement is met
         if self.config.telegram_enabled:
-            self._send_telegram_notification(
-                project, cwd, message, context, notification_type
-            )
+            idle_required = self.config.telegram_idle_time_required
+            if idle_required > 0:
+                system_idle = get_system_idle_time()
+                if system_idle < idle_required:
+                    logger.debug(f"Skipping Telegram: system idle {system_idle:.0f}s < required {idle_required}s")
+                else:
+                    logger.info(f"System idle {system_idle:.0f}s >= {idle_required}s, sending Telegram")
+                    self._send_telegram_notification(
+                        project, cwd, message, context, notification_type
+                    )
+            else:
+                self._send_telegram_notification(
+                    project, cwd, message, context, notification_type
+                )
 
-    def _send_macos_notification(self, project: str, message: str, cwd: str):
+    def _send_macos_notification(self, project: str, message: str, cwd: str, context: str | None = None):
         """Send a macOS notification."""
         if not check_terminal_notifier_installed():
             logger.warning("terminal-notifier not installed")
             return
 
         title = f"Claude Code - {project}"
-        subtitle = cwd if cwd else None
+
+        # Build notification body with context
+        if context:
+            # Truncate context for notification (max ~200 chars)
+            truncated_context = context[:200] + "..." if len(context) > 200 else context
+            body = truncated_context
+        elif message:
+            body = message
+        else:
+            body = "Claude needs your input"
 
         send_notification(
             title=title,
-            message=message,
-            subtitle=subtitle,
+            message=body,
+            subtitle=None,
             sound=self.config.macos_sound,
+            sound_enabled=self.config.macos_sound_enabled,
             terminal_app=self.config.terminal_app,
         )
 
@@ -178,25 +203,46 @@ class HeyClaude(rumps.App):
         cwd = data.get("cwd", "")
         tool_name = data.get("tool_name", "")
         tool_input = data.get("tool_input", {})
-        message = data.get("message", f"Claude wants to use: {tool_name}")
 
         project = get_project_name(cwd) if cwd else "Claude Code"
 
-        # Format context from tool input
-        context = None
-        if tool_input:
-            context_parts = []
-            for key, value in tool_input.items():
-                if isinstance(value, str) and len(value) > 200:
-                    value = value[:200] + "..."
-                context_parts.append(f"{key}: {value}")
-            context = "\n".join(context_parts)
+        # Format message and context based on tool type
+        if tool_name == "Bash":
+            # Special formatting for Bash commands
+            message = ""
+            command = tool_input.get("command", "")
+            description = tool_input.get("description", "")
+            if description:
+                context = f"# {description}\n$ {command}"
+            else:
+                context = f"$ {command}"
+        else:
+            message = data.get("message", f"Claude wants to use: {tool_name}")
+            # Format context from tool input
+            context = None
+            if tool_input:
+                context_parts = []
+                for key, value in tool_input.items():
+                    if isinstance(value, str) and len(value) > 200:
+                        value = value[:200] + "..."
+                    context_parts.append(f"{key}: {value}")
+                context = "\n".join(context_parts)
 
         if self.config.macos_enabled:
-            self._send_macos_notification(project, message, cwd)
+            self._send_macos_notification(project, message, cwd, context)
 
+        # Only send Telegram notification if idle time requirement is met
         if self.config.telegram_enabled:
-            self._send_telegram_permission(project, cwd, message, context, request_id)
+            idle_required = self.config.telegram_idle_time_required
+            if idle_required > 0:
+                system_idle = get_system_idle_time()
+                if system_idle < idle_required:
+                    logger.debug(f"Skipping Telegram permission: system idle {system_idle:.0f}s < required {idle_required}s")
+                else:
+                    logger.info(f"System idle {system_idle:.0f}s >= {idle_required}s, sending Telegram permission")
+                    self._send_telegram_permission(project, cwd, message, context, request_id)
+            else:
+                self._send_telegram_permission(project, cwd, message, context, request_id)
 
     def _send_telegram_permission(
         self,
@@ -245,7 +291,13 @@ class HeyClaude(rumps.App):
     @rumps.clicked("Install Hook")
     def _install_hook(self, sender):
         """Install the Claude Code hook."""
-        success, message = install_hook(all_notifications=self.config.all_notifications)
+        # Install hooks based on notification settings
+        install_permission = self.config.permission_notifications
+        install_idle = self.config.idle_notifications
+        success, message = install_hook(
+            idle_notifications=install_idle,
+            permission_notifications=install_permission,
+        )
 
         if success:
             rumps.alert("Hook Installed", message)

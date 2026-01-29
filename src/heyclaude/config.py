@@ -15,6 +15,7 @@ DEFAULT_CONFIG = {
         "macos": {
             "enabled": True,
             "sound": "Ping",
+            "sound_enabled": True,
             "terminal_app": "iTerm",
         },
         "telegram": {
@@ -23,11 +24,12 @@ DEFAULT_CONFIG = {
             "chat_id": "",
             "include_context": True,
             "context_lines": 20,
+            "idle_time_required": 120,  # Seconds of system idle before sending to Telegram (0 = always)
         },
     },
     "filters": {
-        "notification_types": ["idle_prompt"],
-        "all_notifications": False,  # If True, receive all Claude notifications (not just idle)
+        "idle_notifications": True,  # Receive idle_prompt notifications
+        "permission_notifications": True,  # Receive permission_prompt notifications
     },
     "debug": False,
     "launch_at_login": False,
@@ -143,6 +145,10 @@ class Config:
         return self.get("notifications.macos.sound", "Ping")
 
     @property
+    def macos_sound_enabled(self) -> bool:
+        return self.get("notifications.macos.sound_enabled", True)
+
+    @property
     def terminal_app(self) -> str:
         return self.get("notifications.macos.terminal_app", "iTerm")
 
@@ -167,12 +173,16 @@ class Config:
         return self.get("notifications.telegram.context_lines", 20)
 
     @property
-    def notification_types(self) -> list:
-        return self.get("filters.notification_types", ["idle_prompt"])
+    def telegram_idle_time_required(self) -> int:
+        return self.get("notifications.telegram.idle_time_required", 0)
 
     @property
-    def all_notifications(self) -> bool:
-        return self.get("filters.all_notifications", False)
+    def idle_notifications(self) -> bool:
+        return self.get("filters.idle_notifications", True)
+
+    @property
+    def permission_notifications(self) -> bool:
+        return self.get("filters.permission_notifications", True)
 
     @property
     def debug(self) -> bool:
