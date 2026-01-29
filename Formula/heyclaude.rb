@@ -5,10 +5,10 @@ cask "heyclaude" do
   version "0.1.0"
   sha256 "REPLACE_WITH_SHA256"
 
-  url "https://github.com/GITHUB_USERNAME/heyclaude/releases/download/v#{version}/HeyClaude-#{version}.zip"
+  url "https://github.com/Hugoch/heyclaude/releases/download/v#{version}/HeyClaude-#{version}.zip"
   name "HeyClaude"
   desc "macOS menubar app for Claude Code notifications"
-  homepage "https://github.com/GITHUB_USERNAME/heyclaude"
+  homepage "https://github.com/Hugoch/heyclaude"
 
   depends_on macos: ">= :monterey"
 
