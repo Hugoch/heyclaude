@@ -270,9 +270,16 @@ class PreferencesWindowController(NSObject):
         chat_label = self._create_label("Chat ID:", NSMakeRect(20, y, 150, 20))
         view.addSubview_(chat_label)
 
-        self.chat_field = NSTextField.alloc().initWithFrame_(NSMakeRect(180, y, 150, 24))
+        self.chat_field = NSTextField.alloc().initWithFrame_(NSMakeRect(180, y, 100, 24))
         self.chat_field.setStringValue_(self.config.telegram_chat_id)
         view.addSubview_(self.chat_field)
+
+        get_chat_btn = NSButton.alloc().initWithFrame_(NSMakeRect(290, y - 3, 120, 28))
+        get_chat_btn.setTitle_("Get Chat ID")
+        get_chat_btn.setBezelStyle_(NSBezelStyleRounded)
+        get_chat_btn.setTarget_(self)
+        get_chat_btn.setAction_(objc.selector(self.getChatId_, signature=b"v@:@"))
+        view.addSubview_(get_chat_btn)
 
         y -= 40
 
@@ -498,6 +505,62 @@ class PreferencesWindowController(NSObject):
             )
 
         threading.Thread(target=test, daemon=True).start()
+
+    @objc.typedSelector(b"v@:@")
+    def getChatId_(self, sender):
+        """Fetch chat ID from Telegram bot's recent messages."""
+        import requests
+
+        token = self.token_field.stringValue()
+        if not token:
+            self._show_alert("Error", "Please enter the Bot Token first")
+            return
+
+        def fetch():
+            try:
+                url = f"https://api.telegram.org/bot{token}/getUpdates"
+                response = requests.get(url, timeout=10)
+                data = response.json()
+
+                if not data.get("ok"):
+                    return None, f"API error: {data.get('description', 'Unknown error')}"
+
+                results = data.get("result", [])
+                if not results:
+                    return None, "No messages found.\n\n1. Send a message to your bot first\n2. Then click 'Get Chat ID' again"
+
+                # Get chat ID from the most recent message
+                for update in reversed(results):
+                    message = update.get("message") or update.get("edited_message")
+                    if message and message.get("chat"):
+                        chat_id = str(message["chat"]["id"])
+                        return chat_id, None
+
+                return None, "No chat found in recent messages"
+
+            except Exception as e:
+                return None, f"Error: {e}"
+
+        def on_result(chat_id, error):
+            if chat_id:
+                self.chat_field.setStringValue_(chat_id)
+                self._show_alert("Success", f"Chat ID found: {chat_id}")
+            else:
+                self._show_alert("Error", error)
+
+        def run():
+            chat_id, error = fetch()
+            from AppKit import NSApp
+            # Schedule UI update on main thread
+            def update_ui():
+                on_result(chat_id, error)
+            NSApp.performSelectorOnMainThread_withObject_waitUntilDone_(
+                objc.selector(lambda: update_ui(), signature=b"v@:"),
+                None,
+                False,
+            )
+
+        threading.Thread(target=run, daemon=True).start()
 
     @objc.typedSelector(b"v@:@")
     def contextChanged_(self, sender):
