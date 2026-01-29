@@ -274,12 +274,12 @@ class PreferencesWindowController(NSObject):
         self.chat_field.setStringValue_(self.config.telegram_chat_id)
         view.addSubview_(self.chat_field)
 
-        get_chat_btn = NSButton.alloc().initWithFrame_(NSMakeRect(290, y - 3, 120, 28))
-        get_chat_btn.setTitle_("Get Chat ID")
-        get_chat_btn.setBezelStyle_(NSBezelStyleRounded)
-        get_chat_btn.setTarget_(self)
-        get_chat_btn.setAction_(objc.selector(self.getChatId_, signature=b"v@:@"))
-        view.addSubview_(get_chat_btn)
+        self.get_chat_btn = NSButton.alloc().initWithFrame_(NSMakeRect(290, y - 3, 120, 28))
+        self.get_chat_btn.setTitle_("Get Chat ID")
+        self.get_chat_btn.setBezelStyle_(NSBezelStyleRounded)
+        self.get_chat_btn.setTarget_(self)
+        self.get_chat_btn.setAction_(objc.selector(self.getChatId_, signature=b"v@:@"))
+        view.addSubview_(self.get_chat_btn)
 
         y -= 40
 
@@ -477,8 +477,9 @@ class PreferencesWindowController(NSObject):
 
     @objc.typedSelector(b"v@:@")
     def testTelegram_(self, sender):
-        token = self.token_field.stringValue()
-        chat_id = self.chat_field.stringValue()
+        # Convert NSString to Python str to avoid YAML serialization issues
+        token = str(self.token_field.stringValue())
+        chat_id = str(self.chat_field.stringValue())
 
         if not token or not chat_id:
             self._show_alert("Error", "Please enter both Bot Token and Chat ID")
@@ -487,80 +488,52 @@ class PreferencesWindowController(NSObject):
         self.config.set("notifications.telegram.bot_token", token)
         self.config.set("notifications.telegram.chat_id", chat_id)
 
-        def test():
-            success, message = test_telegram_connection_sync(token, chat_id)
-
-            def show_result():
-                if success:
-                    self._show_alert("Success", f"Telegram connection working!\n{message}")
-                else:
-                    self._show_alert("Error", f"Connection failed:\n{message}")
-
-            from AppKit import NSApp
-
-            NSApp.performSelectorOnMainThread_withObject_waitUntilDone_(
-                objc.selector(lambda: show_result(), signature=b"v@:"),
-                None,
-                False,
-            )
-
-        threading.Thread(target=test, daemon=True).start()
+        # Synchronous call (brief freeze but safe)
+        success, message = test_telegram_connection_sync(token, chat_id)
+        if success:
+            self._show_alert("Success", f"Telegram connection working!\n{message}")
+        else:
+            self._show_alert("Error", f"Connection failed:\n{message}")
 
     @objc.typedSelector(b"v@:@")
     def getChatId_(self, sender):
         """Fetch chat ID from Telegram bot's recent messages."""
         import requests
 
-        token = self.token_field.stringValue()
+        # Convert NSString to Python str
+        token = str(self.token_field.stringValue())
         if not token:
             self._show_alert("Error", "Please enter the Bot Token first")
             return
 
-        def fetch():
-            try:
-                url = f"https://api.telegram.org/bot{token}/getUpdates"
-                response = requests.get(url, timeout=10)
-                data = response.json()
+        # Synchronous call (brief freeze but safe)
+        try:
+            url = f"https://api.telegram.org/bot{token}/getUpdates"
+            response = requests.get(url, timeout=10)
+            data = response.json()
 
-                if not data.get("ok"):
-                    return None, f"API error: {data.get('description', 'Unknown error')}"
+            if not data.get("ok"):
+                self._show_alert("Error", f"API error: {data.get('description', 'Unknown error')}")
+                return
 
-                results = data.get("result", [])
-                if not results:
-                    return None, "No messages found.\n\n1. Send a message to your bot first\n2. Then click 'Get Chat ID' again"
+            results = data.get("result", [])
+            if not results:
+                self._show_alert("Error", "No messages found.\n\n1. Send a message to your bot first\n2. Then click 'Get Chat ID' again")
+                return
 
-                # Get chat ID from the most recent message
-                for update in reversed(results):
-                    message = update.get("message") or update.get("edited_message")
-                    if message and message.get("chat"):
-                        chat_id = str(message["chat"]["id"])
-                        return chat_id, None
+            # Get chat ID from the most recent message
+            for update in reversed(results):
+                msg = update.get("message") or update.get("edited_message")
+                if msg and msg.get("chat"):
+                    chat_id = str(msg["chat"]["id"])
+                    self.chat_field.setStringValue_(chat_id)
+                    self._show_alert("Success", f"Chat ID found: {chat_id}")
+                    return
 
-                return None, "No chat found in recent messages"
+            self._show_alert("Error", "No chat found in recent messages")
 
-            except Exception as e:
-                return None, f"Error: {e}"
-
-        def on_result(chat_id, error):
-            if chat_id:
-                self.chat_field.setStringValue_(chat_id)
-                self._show_alert("Success", f"Chat ID found: {chat_id}")
-            else:
-                self._show_alert("Error", error)
-
-        def run():
-            chat_id, error = fetch()
-            from AppKit import NSApp
-            # Schedule UI update on main thread
-            def update_ui():
-                on_result(chat_id, error)
-            NSApp.performSelectorOnMainThread_withObject_waitUntilDone_(
-                objc.selector(lambda: update_ui(), signature=b"v@:"),
-                None,
-                False,
-            )
-
-        threading.Thread(target=run, daemon=True).start()
+        except Exception as e:
+            self._show_alert("Error", f"Error: {e}")
 
     @objc.typedSelector(b"v@:@")
     def contextChanged_(self, sender):
