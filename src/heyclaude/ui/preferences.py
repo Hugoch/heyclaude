@@ -349,6 +349,28 @@ class PreferencesWindowController(NSObject):
         idle_hint.setFont_(NSFont.systemFontOfSize_(11))
         view.addSubview_(idle_hint)
 
+        y -= 40
+
+        screen_lock_label = self._create_label("Send when screen locked:", NSMakeRect(20, y, 170, 20))
+        view.addSubview_(screen_lock_label)
+
+        self.screen_lock_checkbox = NSButton.alloc().initWithFrame_(NSMakeRect(200, y, 200, 20))
+        self.screen_lock_checkbox.setButtonType_(NSSwitchButton)
+        self.screen_lock_checkbox.setTitle_("")
+        self.screen_lock_checkbox.setState_(
+            NSOnState if self.config.telegram_send_on_screen_lock else NSOffState
+        )
+        self.screen_lock_checkbox.setTarget_(self)
+        self.screen_lock_checkbox.setAction_(objc.selector(self.screenLockChanged_, signature=b"v@:@"))
+        view.addSubview_(self.screen_lock_checkbox)
+
+        y -= 20
+
+        screen_lock_hint = self._create_label("Immediately send when screen is locked (bypasses idle time)", NSMakeRect(20, y, 400, 16))
+        screen_lock_hint.setTextColor_(NSTextField.alloc().init().textColor().colorWithAlphaComponent_(0.5))
+        screen_lock_hint.setFont_(NSFont.systemFontOfSize_(11))
+        view.addSubview_(screen_lock_hint)
+
         tab.setView_(view)
         return tab
 
@@ -567,6 +589,11 @@ class PreferencesWindowController(NSObject):
         self.idle_time_value.setStringValue_(text)
         # Store in seconds
         self.config.set("notifications.telegram.idle_time_required", minutes * 60)
+        self._notify_changed()
+
+    @objc.typedSelector(b"v@:@")
+    def screenLockChanged_(self, sender):
+        self.config.set("notifications.telegram.send_on_screen_lock", sender.state() == NSOnState)
         self._notify_changed()
 
     @objc.typedSelector(b"v@:@")

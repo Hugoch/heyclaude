@@ -25,6 +25,7 @@ DEFAULT_CONFIG = {
             "include_context": True,
             "context_lines": 20,
             "idle_time_required": 120,  # Seconds of system idle before sending to Telegram (0 = always)
+            "send_on_screen_lock": False,  # Immediately send when screen is locked
         },
     },
     "filters": {
@@ -175,6 +176,10 @@ class Config:
     @property
     def telegram_idle_time_required(self) -> int:
         return self.get("notifications.telegram.idle_time_required", 0)
+
+    @property
+    def telegram_send_on_screen_lock(self) -> bool:
+        return self.get("notifications.telegram.send_on_screen_lock", False)
 
     @property
     def idle_notifications(self) -> bool:

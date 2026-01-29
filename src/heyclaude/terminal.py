@@ -3,6 +3,8 @@
 import logging
 import subprocess
 
+import Quartz
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +35,25 @@ def get_system_idle_time() -> float:
     except Exception as e:
         logger.debug(f"Could not get system idle time: {e}")
     return 0
+
+
+def is_screen_locked() -> bool:
+    """
+    Check if the macOS screen is locked.
+
+    Uses Quartz CGSessionCopyCurrentDictionary to check the screen lock state.
+
+    Returns:
+        True if screen is locked, False otherwise.
+    """
+    try:
+        session_dict = Quartz.CGSessionCopyCurrentDictionary()
+        if session_dict:
+            return session_dict.get("CGSSessionScreenIsLocked", False)
+    except Exception as e:
+        logger.debug(f"Could not check screen lock state: {e}")
+    return False
+
 
 TERMINAL_APPS = {
     "iTerm": "com.googlecode.iterm2",

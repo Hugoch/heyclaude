@@ -11,7 +11,7 @@ from .hooks import install_hook, is_hook_installed
 from .notifier import check_terminal_notifier_installed, send_notification
 from .server import NotificationServer
 from .telegram_bot import TelegramNotifier
-from .terminal import activate_terminal, get_system_idle_time
+from .terminal import activate_terminal, get_system_idle_time, is_screen_locked
 from .transcript import get_project_name, parse_transcript
 
 logger = logging.getLogger(__name__)
@@ -119,19 +119,27 @@ class HeyClaude(rumps.App):
         if self.config.macos_enabled:
             self._send_macos_notification(project, message, cwd, context)
 
-        # Only send Telegram notification if idle time requirement is met
+        # Only send Telegram notification if idle time requirement is met or screen is locked
         if self.config.telegram_enabled:
-            idle_required = self.config.telegram_idle_time_required
-            if idle_required > 0:
-                system_idle = get_system_idle_time()
-                if system_idle < idle_required:
-                    logger.debug(f"Skipping Telegram: system idle {system_idle:.0f}s < required {idle_required}s")
-                else:
-                    logger.info(f"System idle {system_idle:.0f}s >= {idle_required}s, sending Telegram")
-                    self._send_telegram_notification(
-                        project, cwd, message, context, notification_type
-                    )
+            should_send = False
+            # Check screen lock first (bypasses idle time)
+            if self.config.telegram_send_on_screen_lock and is_screen_locked():
+                logger.info("Screen is locked, sending Telegram immediately")
+                should_send = True
             else:
+                # Fall back to idle time check
+                idle_required = self.config.telegram_idle_time_required
+                if idle_required > 0:
+                    system_idle = get_system_idle_time()
+                    if system_idle >= idle_required:
+                        logger.info(f"System idle {system_idle:.0f}s >= {idle_required}s, sending Telegram")
+                        should_send = True
+                    else:
+                        logger.debug(f"Skipping Telegram: system idle {system_idle:.0f}s < required {idle_required}s")
+                else:
+                    should_send = True
+
+            if should_send:
                 self._send_telegram_notification(
                     project, cwd, message, context, notification_type
                 )
@@ -231,17 +239,27 @@ class HeyClaude(rumps.App):
         if self.config.macos_enabled:
             self._send_macos_notification(project, message, cwd, context)
 
-        # Only send Telegram notification if idle time requirement is met
+        # Only send Telegram notification if idle time requirement is met or screen is locked
         if self.config.telegram_enabled:
-            idle_required = self.config.telegram_idle_time_required
-            if idle_required > 0:
-                system_idle = get_system_idle_time()
-                if system_idle < idle_required:
-                    logger.debug(f"Skipping Telegram permission: system idle {system_idle:.0f}s < required {idle_required}s")
-                else:
-                    logger.info(f"System idle {system_idle:.0f}s >= {idle_required}s, sending Telegram permission")
-                    self._send_telegram_permission(project, cwd, message, context, request_id)
+            should_send = False
+            # Check screen lock first (bypasses idle time)
+            if self.config.telegram_send_on_screen_lock and is_screen_locked():
+                logger.info("Screen is locked, sending Telegram permission immediately")
+                should_send = True
             else:
+                # Fall back to idle time check
+                idle_required = self.config.telegram_idle_time_required
+                if idle_required > 0:
+                    system_idle = get_system_idle_time()
+                    if system_idle >= idle_required:
+                        logger.info(f"System idle {system_idle:.0f}s >= {idle_required}s, sending Telegram permission")
+                        should_send = True
+                    else:
+                        logger.debug(f"Skipping Telegram permission: system idle {system_idle:.0f}s < required {idle_required}s")
+                else:
+                    should_send = True
+
+            if should_send:
                 self._send_telegram_permission(project, cwd, message, context, request_id)
 
     def _send_telegram_permission(
@@ -325,6 +343,7 @@ class HeyClaude(rumps.App):
     def run(self):
         """Start the application."""
         self.server.start()
+        self._update_status()
         logger.info("HeyClaude started")
         super().run()
 
