@@ -1,0 +1,32 @@
+[project]
+name = "heyclaude"
+version = "0.1.0"
+description = "macOS notification app for Claude Code idle prompts"
+requires-python = ">=3.11"
+dependencies = [
+    "rumps>=0.4.0",
+    "flask>=3.0",
+    "pyyaml>=6.0",
+    "python-telegram-bot>=21.0",
+    "pyobjc-framework-Cocoa>=10.0",
+    "pyobjc-framework-UserNotifications>=10.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+build = [
+    "py2app>=0.28",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+heyclaude = "heyclaude.app:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
